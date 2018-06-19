@@ -1,3 +1,3 @@
-运行方法：python运行explore.py就可以了
+运行方法：python运行explore.py就可以了,运行时候需要看看数据路径
 featwheel是我复用的别人的一些算计距离的轮子
 import里面有些库，可能要自己装一下
