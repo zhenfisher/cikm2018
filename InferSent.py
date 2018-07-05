@@ -35,8 +35,8 @@ df_train_en_sp.columns = ['english1', 'spanish1', 'english2', 'spanish2', 'resul
 df_train_sp_en.columns = ['spanish1', 'english1', 'english2', 'spanish2', 'result']
 
 # Evaluation data
-test_data = pd.read_csv('./input/cikm_test_a_20180516.txt', sep='	', header=None,error_bad_lines=False)
-test_data.columns = ['spanish1', 'spanish2']
+infer_data = pd.read_csv('./input/cikm_test_a_20180516.txt', sep='	', header=None,error_bad_lines=False)
+infer_data.columns = ['spanish1', 'spanish2']
 
 train1 = pd.DataFrame(pd.concat([df_train_en_sp['spanish1'],df_train_sp_en['spanish1']], axis=0))
 train2 = pd.DataFrame(pd.concat([df_train_en_sp['spanish2'],df_train_sp_en['spanish2']], axis=0))
@@ -93,12 +93,12 @@ def removeSpanishSigns(df):
 stemSpanish(train)
 removeSpanishSigns(train)
 # eval
-stemSpanish(test_data)
-removeSpanishSigns(test_data)
+stemSpanish(infer_data)
+removeSpanishSigns(infer_data)
 
 train_data = train
 train_data.columns = ['s1','s2','label']
-test_data.columns = ['s1','s2']
+infer_data.columns = ['s1','s2']
 
 # 按比例分割 train dev test
 total_len = train_data.shape[0]
@@ -131,7 +131,7 @@ def get_word_dict(sentences):
     word_dict['<p>'] = ''
     word_dict['<unk>'] = ''
     return word_dict
-all_sent = train_data['s1'].tolist() + train_data['s2'].tolist() + test_data['s1'].tolist() + test_data['s2'].tolist()
+all_sent = train_data['s1'].tolist() + train_data['s2'].tolist() + infer_data['s1'].tolist() + infer_data['s2'].tolist()
 word_dict = get_word_dict(all_sent)
 
 
@@ -180,6 +180,8 @@ print "Filled Unk words' embeddings"
 
 
 ''' adding sos, eos; split and filter words'''
+
+# train and testdata
 for split in ['s1', 's2']:
     for data_type in ['train', 'valid', 'test']:
         eval(data_type)[split] = np.array([['<s>'] +
@@ -407,10 +409,10 @@ Train model on Natural Language Inference task
 """
 epoch = 1
 
-# while not stop_training and epoch <= params.n_epochs:
-#     train_acc = trainepoch(epoch)
-#     eval_acc = evaluate(epoch, 'valid')
-#     epoch += 1
+while not stop_training and epoch <= params.n_epochs:
+    train_acc = trainepoch(epoch)
+    eval_acc = evaluate(epoch, 'valid')
+    epoch += 1
 
 # Run best model on test set.
 nli_net.load_state_dict(torch.load(os.path.join(params.outputdir, params.outputmodelname)))
@@ -418,6 +420,41 @@ nli_net.load_state_dict(torch.load(os.path.join(params.outputdir, params.outputm
 print('\nTEST : Epoch {0}'.format(epoch))
 evaluate(1e6, 'valid', True)
 evaluate(0, 'test', True)
+
+
+'''Inference'''
+
+# evaluation data
+for split in ['s1', 's2']:
+    infer_data[split] = np.array([['<s>'] +
+        [word for word in sent.split() if word in word_vec] +
+        ['</s>'] for sent in infer_data[split].tolist()])
+
+def inference(infer_data):
+    nli_net.eval()
+    prob_res_1 = []
+    s1 = infer_data['s1']
+    s2 = infer_data['s2']
+
+    for i in range(0, len(s1), params.batch_size):
+        # prepare batch
+        s1_batch, s1_len = get_batch(s1[i:i + params.batch_size].tolist(), word_vec)
+        s2_batch, s2_len = get_batch(s2[i:i + params.batch_size].tolist(), word_vec)
+        s1_batch, s2_batch = Variable(s1_batch), Variable(s2_batch)
+
+        # model forward
+        output = nli_net((s1_batch, s1_len), (s2_batch, s2_len))
+        # get softmax probability
+        sm = nn.Softmax(dim=2)
+        res = sm(output.data)[:,1]
+        prob_res_1.append(res.data.tolist())
+        return prob_res_1
+
+
+''' Inference And Write Result'''
+result = inference(infer_data)
+result = pd.DataFrame(result).T
+result.to_csv('result.txt',header=False,index=False)
 
 # Save encoder instead of full model
 torch.save(nli_net.encoder.state_dict(), os.path.join(params.outputdir, params.outputmodelname + '.encoder.pkl'))
