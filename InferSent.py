@@ -449,9 +449,9 @@ def inference(infer_data):
         # model forward
         output = nli_net((s1_batch, s1_len), (s2_batch, s2_len))
         # get softmax probability
-        sm = nn.Softmax(dim=2)
+        sm = nn.Softmax()
         res = sm(output.data)[:,1]
-        prob_res_1.append(res.data.tolist())
+        prob_res_1 += res.data.tolist()
         return prob_res_1
 
 
