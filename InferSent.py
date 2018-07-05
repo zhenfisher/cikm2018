@@ -71,16 +71,16 @@ def stemEnglish(df):
                                                         nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
     df['english2'] =  df.english2.map(lambda x:' '.join([snowball_stemmer2.stem(word) for word in
                                                         nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
-def removeSpanishStopWords(df, stop):
-    df['spanish1'] = df.spanish1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-                                                         if word not in stops1]).encode('utf-8'))
-    df['spanish2'] = df.spanish2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-                                                         if word not in stops1]).encode('utf-8'))
-def removeEnglishStopWords(df, stop):
-    df['english1'] = df.english1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-                                                         if word not in stops2]).encode('utf-8'))
-    df['english2'] = df.english2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-                                                         if word not in stops2]).encode('utf-8'))
+# def removeSpanishStopWords(df, stop):
+#     df['spanish1'] = df.spanish1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
+#                                                          if word not in stops1]).encode('utf-8'))
+#     df['spanish2'] = df.spanish2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
+#                                                          if word not in stops1]).encode('utf-8'))
+# def removeEnglishStopWords(df, stop):
+#     df['english1'] = df.english1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
+#                                                          if word not in stops2]).encode('utf-8'))
+#     df['english2'] = df.english2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
+#                                                          if word not in stops2]).encode('utf-8'))
 def removeEnglishSigns(df):
     df['english1'] = df.english1.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,!?:#$@\[\]/]', '', x))
     df['english2'] = df.english2.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,!?:#$@\[\]/]', '', x))
@@ -193,7 +193,7 @@ for split in ['s1', 's2']:
 parser = argparse.ArgumentParser(description='InferSent training')
 # paths
 parser.add_argument("--outputdir", type=str, default='savedir/', help="Output directory")
-parser.add_argument("--outputmodelname", type=str, default='model.pickle')
+parser.add_argument("--outputmodelname", type=str, default='model_3.pickle')
 
 
 # training
@@ -202,7 +202,7 @@ parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--dpout_model", type=float, default=0., help="encoder dropout")
 parser.add_argument("--dpout_fc", type=float, default=0., help="classifier dropout")
 parser.add_argument("--nonlinear_fc", type=float, default=0, help="use nonlinearity in fc")
-parser.add_argument("--optimizer", type=str, default="sgd,lr=0.1", help="adam or sgd,lr=0.1")
+parser.add_argument("--optimizer", type=str, default="adam,lr=0.1", help="sgd or sgd,lr=0.1")
 parser.add_argument("--lrshrink", type=float, default=5, help="shrink factor for sgd")
 parser.add_argument("--decay", type=float, default=0.99, help="lr decay")
 parser.add_argument("--minlr", type=float, default=1e-5, help="minimum lr")
@@ -213,7 +213,7 @@ parser.add_argument("--encoder_type", type=str, default='InferSent', help="see l
 parser.add_argument("--enc_lstm_dim", type=int, default=2048, help="encoder nhid dimension")
 parser.add_argument("--n_enc_layers", type=int, default=1, help="encoder num layers")
 parser.add_argument("--fc_dim", type=int, default=512, help="nhid of fc layers")
-parser.add_argument("--n_classes", type=int, default=3, help="entailment/neutral/contradiction")
+parser.add_argument("--n_classes", type=int, default=2, help="entailment/neutral/contradiction")
 parser.add_argument("--pool_type", type=str, default='max', help="max or mean")
 params, _ = parser.parse_known_args()
 params.word_emb_dim = 300
@@ -407,13 +407,13 @@ Train model on Natural Language Inference task
 """
 epoch = 1
 
-while not stop_training and epoch <= params.n_epochs:
-    train_acc = trainepoch(epoch)
-    eval_acc = evaluate(epoch, 'valid')
-    epoch += 1
+# while not stop_training and epoch <= params.n_epochs:
+#     train_acc = trainepoch(epoch)
+#     eval_acc = evaluate(epoch, 'valid')
+#     epoch += 1
 
 # Run best model on test set.
-nli_net.load_state_dict(os.path.join(params.outputdir, params.outputmodelname))
+nli_net.load_state_dict(torch.load(os.path.join(params.outputdir, params.outputmodelname)))
 
 print('\nTEST : Epoch {0}'.format(epoch))
 evaluate(1e6, 'valid', True)
