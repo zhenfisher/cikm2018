@@ -34,10 +34,6 @@ df_train_sp_en = pd.read_csv('./input/cikm_spanish_train_20180516.txt',sep='	', 
 df_train_en_sp.columns = ['english1', 'spanish1', 'english2', 'spanish2', 'result']
 df_train_sp_en.columns = ['spanish1', 'english1', 'english2', 'spanish2', 'result']
 
-# Evaluation data
-infer_data = pd.read_csv('./input/cikm_test_a_20180516.txt', sep='	', header=None,error_bad_lines=False)
-infer_data.columns = ['spanish1', 'spanish2']
-
 train1 = pd.DataFrame(pd.concat([df_train_en_sp['spanish1'],df_train_sp_en['spanish1']], axis=0))
 train2 = pd.DataFrame(pd.concat([df_train_en_sp['spanish2'],df_train_sp_en['spanish2']], axis=0))
 train = pd.concat([train1,train2],axis=1).reset_index()
@@ -46,6 +42,13 @@ result = pd.DataFrame(pd.concat([df_train_en_sp['result'],df_train_sp_en['result
 result = result.drop(['index'],axis=1)
 # pd.get_dummies(result['result']).head()
 train['result'] = result
+
+
+
+# Evaluation data
+infer_data = pd.read_csv('./input/cikm_test_a_20180516.txt', sep='	', header=None,error_bad_lines=False)
+infer_data.columns = ['spanish1', 'spanish2']
+
 
 print("Read Data Done!")
 # train.head()
@@ -92,9 +95,11 @@ def removeSpanishSigns(df):
 # train
 stemSpanish(train)
 removeSpanishSigns(train)
+
 # eval
 stemSpanish(infer_data)
 removeSpanishSigns(infer_data)
+
 
 train_data = train
 train_data.columns = ['s1','s2','label']
@@ -188,6 +193,11 @@ for split in ['s1', 's2']:
             [word for word in sent.split() if word in word_vec] +
             ['</s>'] for sent in eval(data_type)[split].tolist()])
 
+# evaluation data
+for split in ['s1', 's2']:
+    infer_data[split] = np.array([['<s>'] +
+        [word for word in sent.split() if word in word_vec] +
+        ['</s>'] for sent in infer_data[split].tolist()])
 
 ''' Model '''
 
@@ -195,7 +205,7 @@ for split in ['s1', 's2']:
 parser = argparse.ArgumentParser(description='InferSent training')
 # paths
 parser.add_argument("--outputdir", type=str, default='savedir/', help="Output directory")
-parser.add_argument("--outputmodelname", type=str, default='model_3.pickle')
+parser.add_argument("--outputmodelname", type=str, default='model_1.pickle')
 
 
 # training
@@ -204,7 +214,7 @@ parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--dpout_model", type=float, default=0., help="encoder dropout")
 parser.add_argument("--dpout_fc", type=float, default=0., help="classifier dropout")
 parser.add_argument("--nonlinear_fc", type=float, default=0, help="use nonlinearity in fc")
-parser.add_argument("--optimizer", type=str, default="adam,lr=0.1", help="sgd or sgd,lr=0.1")
+parser.add_argument("--optimizer", type=str, default="sgd,lr=0.1", help="adam or sgd,lr=0.1")
 parser.add_argument("--lrshrink", type=float, default=5, help="shrink factor for sgd")
 parser.add_argument("--decay", type=float, default=0.99, help="lr decay")
 parser.add_argument("--minlr", type=float, default=1e-5, help="minimum lr")
@@ -423,12 +433,6 @@ evaluate(0, 'test', True)
 
 
 '''Inference'''
-
-# evaluation data
-for split in ['s1', 's2']:
-    infer_data[split] = np.array([['<s>'] +
-        [word for word in sent.split() if word in word_vec] +
-        ['</s>'] for sent in infer_data[split].tolist()])
 
 def inference(infer_data):
     nli_net.eval()
