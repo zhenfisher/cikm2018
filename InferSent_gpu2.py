@@ -16,60 +16,6 @@ from models import NLINet
 from mutils import get_optimizer
 from data import get_nli, get_batch
 
-##################### LOAD EMBEDDINGS ########################
-
-def load_embed(name ):
-    with open('input/' + name , 'rb') as f:
-        return pickle.load(f)
-
-word_vec = load_embed('embedding.pkl')
-
-print 'Embedding - Loaded!'
-
-
-
-##################### LOAD DATA ########################
-
-train_data = pd.read_csv('input/cleaned_train.csv')
-infer_data = pd.read_csv('input/cleaned_test.csv')
-
-train_data = train_data.dropna()
-infer_data = infer_data.dropna()
-print 'After cleaning up null: ', 'Train data size:', train_data.shape[0], 'Inference data size:', infer_data.shape[0]
-
-# 按比例分割 train dev test
-total_len = train_data.shape[0]
-train_len = int(total_len * 0.8)
-dev_len = train_len + int(total_len * 0.15)
-test_len = dev_len + int(total_len * 0.05)
-
-train = train_data.loc[0:train_len-1]
-valid = train_data.loc[train_len:dev_len-1]
-test = train_data.loc[dev_len:]
-
-# adding sos, eos; split and filter words
-
-# train data
-for split in ['s1', 's2']:
-    for data_type in ['train', 'valid', 'test']:
-        eval(data_type)[split] = np.array([['<s>'] +
-            [word for word in sent.split() if word in word_vec] +
-            ['</s>'] for sent in eval(data_type)[split].tolist()])
-
-# inference data
-for split in ['s1', 's2']:
-    infer_data[split] = np.array([['<s>'] +
-        [word for word in sent.split() if word in word_vec] +
-        ['</s>'] for sent in infer_data[split].tolist()])
-
-print 'Data - Loaded!'
-
-print train.isnull().sum()
-print valid.isnull().sum()
-print test.isnull().sum()
-
-
-##################### MODEL ########################
 
 parser = argparse.ArgumentParser(description='InferSent training')
 # paths
@@ -101,6 +47,74 @@ params.word_emb_dim = 300
 
 
 print params
+
+##################### LOAD EMBEDDINGS ########################
+
+def load_embed(name ):
+    with open('input/' + name , 'rb') as f:
+        return pickle.load(f)
+
+word_vec = load_embed('embedding.pkl')
+
+print 'Embedding - Loaded!'
+
+
+
+##################### LOAD DATA ########################
+
+train_data = pd.read_csv('input/cleaned_train.csv')
+infer_data = pd.read_csv('input/cleaned_test.csv')
+
+train_data = train_data.dropna()
+infer_data = infer_data.dropna()
+print 'After cleaning up null: ', 'Train data size:', train_data.shape[0], 'Inference data size:', infer_data.shape[0]
+
+# 按比例分割 train dev test
+total_len = train_data.shape[0]
+residual=total_len%params.batch_size
+batch_len = (total_len - residual)/params.batch_size
+train_len = int ( batch_len* 0.8) * params.batch_size
+valid_len = train_len + int (batch_len * 0.15) * params.batch_size
+test_len = valid_len + int (batch_len * 0.15) * params.batch_size
+
+train = train_data.loc[0:train_len-1]
+valid = train_data.loc[train_len:valid_len-1]
+test = train_data.loc[valid_len:]
+
+print train.isnull().sum()
+print valid.isnull().sum()
+print test.isnull().sum()
+
+# adding sos, eos; split and filter words
+
+# inference data
+for split in ['s1', 's2']:
+    infer_data[split] = np.array([['<s>'] +
+        [word for word in sent.split() if word in word_vec] +
+        ['</s>'] for sent in infer_data[split].tolist()])
+
+# train data
+for split in ['s1', 's2']:
+    for data_type in ['train', 'valid', 'test']:
+        eval(data_type)[split] = np.array([['<s>'] +
+            [word for word in sent.split() if word in word_vec] +
+            ['</s>'] for sent in eval(data_type)[split].tolist()])
+        # for sent in eval(data_type)[split].tolist():
+        #     body = []
+        #     for word in sent.split():
+        #         if word in word_vec:
+        #             body.append(word)
+        #     res = np.array([['<s>'] + body +['</s>']])
+        # totol_res.append(res)
+
+
+
+
+print 'Data - Loaded!'
+
+
+
+##################### MODEL ########################
 
 
 # model config
