@@ -8,6 +8,7 @@ import argparse
 
 import time
 
+import pickle
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -15,95 +16,26 @@ from models import NLINet
 from mutils import get_optimizer
 from data import get_nli, get_batch
 
-from nltk.stem import SnowballStemmer
-snowball_stemmer1 = SnowballStemmer('spanish')
-snowball_stemmer2 = SnowballStemmer('english')
-snowball_stemmer1.stem
-snowball_stemmer2.stem
+##################### LOAD EMBEDDINGS ########################
 
-# from nltk.corpus import stopwords
-# stops1 = set(stopwords.words("spanish"))
-# stops2 = set(stopwords.words("english"))
+def load_embed(name ):
+    with open('input/' + name , 'rb') as f:
+        return pickle.load(f)
 
+word_vec = load_embed('embedding.pkl')
 
-
-#################### READ DATA ####################
-
-df_train_en_sp = pd.read_csv('./input/cikm_english_train_20180516.txt',sep='	', header=None,error_bad_lines=False)
-df_train_sp_en = pd.read_csv('./input/cikm_spanish_train_20180516.txt',sep='	', header=None,error_bad_lines=False)
-df_train_en_sp.columns = ['english1', 'spanish1', 'english2', 'spanish2', 'result']
-df_train_sp_en.columns = ['spanish1', 'english1', 'english2', 'spanish2', 'result']
-
-train1 = pd.DataFrame(pd.concat([df_train_en_sp['spanish1'],df_train_sp_en['spanish1']], axis=0))
-train2 = pd.DataFrame(pd.concat([df_train_en_sp['spanish2'],df_train_sp_en['spanish2']], axis=0))
-train = pd.concat([train1,train2],axis=1).reset_index()
-train = train.drop(['index'],axis=1)
-result = pd.DataFrame(pd.concat([df_train_en_sp['result'],df_train_sp_en['result']], axis=0)).reset_index()
-result = result.drop(['index'],axis=1)
-# pd.get_dummies(result['result']).head()
-train['result'] = result
+print 'Embedding - Loaded!'
 
 
 
-# Evaluation data
-infer_data = pd.read_csv('./input/cikm_test_a_20180516.txt', sep='	', header=None,error_bad_lines=False)
-infer_data.columns = ['spanish1', 'spanish2']
+##################### LOAD DATA ########################
 
+train_data = pd.read_csv('input/cleaned_train.csv')
+infer_data = pd.read_csv('input/cleaned_test.csv')
 
-print("Read Data Done!")
-# train.head()
-
-
-#################### CLEAN TEXT ####################
-
-# def subchar(text):
-# 	text=text.replace("á", "a")
-# 	text=text.replace("ó", "o")
-# 	text=text.replace("é", "e")
-# 	text=text.replace("í", "i")
-# 	text=text.replace("ú", "u")
-# 	return text
-#西班牙语缩写还原#
-def stemSpanish(df):
-	df['spanish1'] = df.spanish1.map(lambda x: ' '.join([snowball_stemmer1.stem(word) for word in
-                                                         nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
-	df['spanish2'] = df.spanish2.map(lambda x: ' '.join([snowball_stemmer1.stem(word) for word in
-                                                         nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
-def stemEnglish(df):
-    df['english1'] =  df.english1.map(lambda x:' '.join([snowball_stemmer2.stem(word) for word in
-                                                        nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
-    df['english2'] =  df.english2.map(lambda x:' '.join([snowball_stemmer2.stem(word) for word in
-                                                        nltk.word_tokenize(x.lower().decode('utf-8'))]).encode('utf-8'))
-# def removeSpanishStopWords(df, stop):
-#     df['spanish1'] = df.spanish1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-#                                                          if word not in stops1]).encode('utf-8'))
-#     df['spanish2'] = df.spanish2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-#                                                          if word not in stops1]).encode('utf-8'))
-# def removeEnglishStopWords(df, stop):
-#     df['english1'] = df.english1.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-#                                                          if word not in stops2]).encode('utf-8'))
-#     df['english2'] = df.english2.map(lambda x: ' '.join([word for word in nltk.word_tokenize(x.decode('utf-8'))
-#                                                          if word not in stops2]).encode('utf-8'))
-def removeEnglishSigns(df):
-    df['english1'] = df.english1.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,!?:#$@\[\]/]', '', x))
-    df['english2'] = df.english2.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,!?:#$@\[\]/]', '', x))
-def removeSpanishSigns(df):
-    df['spanish1'] = df.spanish1.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,¡!¿?:#$@\[\]/]', '', x))
-    df['spanish2'] = df.spanish2.map(lambda x: re.sub(r'[_"\-;%()|+&=*%.,¡!¿?:#$@\[\]/]', '', x))
-
-# 处理 Spanish
-# train
-stemSpanish(train)
-removeSpanishSigns(train)
-
-# eval
-stemSpanish(infer_data)
-removeSpanishSigns(infer_data)
-
-
-train_data = train
-train_data.columns = ['s1','s2','label']
-infer_data.columns = ['s1','s2']
+train_data = train_data.dropna()
+infer_data = infer_data.dropna()
+print 'After cleaning up null: ', 'Train data size:', train_data.shape[0], 'Inference data size:', infer_data.shape[0]
 
 # 按比例分割 train dev test
 total_len = train_data.shape[0]
@@ -115,97 +47,34 @@ train = train_data.loc[0:train_len-1]
 valid = train_data.loc[train_len:dev_len-1]
 test = train_data.loc[dev_len:]
 
-print("Clean Text and Split Done!")
-# W2V_PATH = 'input/wiki.es.vec'
-#
-# word_vec = build_vocab(train['s1'].tolist() + train['s2'].tolist() +
-#                        valid['s1'].tolist() + valid['s2'].tolist() +
-#                        test['s1'].tolist() + test['s2'].tolist(), W2V_PATH)
+# adding sos, eos; split and filter words
 
-''' Vocab '''
-
-def get_word_dict(sentences):
-    # create vocab of words
-    word_dict = {}
-    for sent in sentences:
-        for word in sent.split():
-            if word not in word_dict:
-                word_dict[word] = ''
-    word_dict['<s>'] = ''
-    word_dict['</s>'] = ''
-    word_dict['<p>'] = ''
-    word_dict['<unk>'] = ''
-    return word_dict
-all_sent = train_data['s1'].tolist() + train_data['s2'].tolist() + infer_data['s1'].tolist() + infer_data['s2'].tolist()
-word_dict = get_word_dict(all_sent)
-
-
-''' Embedding '''
-
-def get_embedding(word_dict, embedding_path):
-    # create word_vec with embedding vectors
-    word_vec = {}
-    with open(embedding_path) as f:
-        for line in f:
-            word, vec = line.split(' ', 1)
-            if word in word_dict:
-                word_vec[word] = np.array(list(map(float, vec.split())))
-    print('Found {0}/{1} words with embedding vectors'.format(
-                len(word_vec), len(word_dict)))
-    missing_word_num = len(word_dict) - len(word_vec)
-    missing_ratio = round(float(missing_word_num)/len(word_dict),4)*100
-    print('Missing Ratio: {}%'.format(missing_ratio))
-    return word_vec
-
-embedding_path = 'input/wiki.es.vec'
-word_vec = get_embedding(word_dict, embedding_path)
-
-
-
-''' Token '''
-
-vocab_to_int = {}
-value = 0
-for word in word_dict:
-    vocab_to_int[word] = value
-    value += 1
-
-int_to_vocab = {}
-for word, value in vocab_to_int.items():
-    int_to_vocab[value] = word
-
-''' Handling unknown tokens'''
-embedding_dim = 300
-for word, i in vocab_to_int.items():
-    if word not in word_vec:
-        # If word not in word_vec, create a random embedding for it
-        new_embedding = np.array(np.random.uniform(-1.0, 1.0, embedding_dim))
-        word_vec[word] = new_embedding
-print "Filled Unk words' embeddings"
-
-
-''' adding sos, eos; split and filter words'''
-
-# train and testdata
+# train data
 for split in ['s1', 's2']:
     for data_type in ['train', 'valid', 'test']:
         eval(data_type)[split] = np.array([['<s>'] +
             [word for word in sent.split() if word in word_vec] +
             ['</s>'] for sent in eval(data_type)[split].tolist()])
 
-# evaluation data
+# inference data
 for split in ['s1', 's2']:
     infer_data[split] = np.array([['<s>'] +
         [word for word in sent.split() if word in word_vec] +
         ['</s>'] for sent in infer_data[split].tolist()])
 
-''' Model '''
+print 'Data - Loaded!'
 
+print train.isnull().sum()
+print valid.isnull().sum()
+print test.isnull().sum()
+
+
+##################### MODEL ########################
 
 parser = argparse.ArgumentParser(description='InferSent training')
 # paths
 parser.add_argument("--outputdir", type=str, default='savedir/', help="Output directory")
-parser.add_argument("--outputmodelname", type=str, default='model_2.pickle')
+parser.add_argument("--outputmodelname", type=str, default='model_5.pickle')
 
 
 # training
@@ -230,21 +99,10 @@ parser.add_argument("--pool_type", type=str, default='max', help="max or mean")
 params, _ = parser.parse_known_args()
 params.word_emb_dim = 300
 
-# # gpu
-# parser.add_argument("--gpu_id", type=int, default=3, help="GPU ID")
-# parser.add_argument("--seed", type=int, default=1234, help="seed")
-#
-#
-# # set gpu device
-# torch.cuda.set_device(params.gpu_id)
 
 print params
 
 
-
-"""
-MODEL
-"""
 # model config
 config_nli_model = {
     'n_words'        :  len(word_vec)          ,
@@ -263,7 +121,7 @@ config_nli_model = {
 
 }
 
-# model
+
 encoder_types = ['InferSent', 'BLSTMprojEncoder', 'BGRUlastEncoder',
                  'InnerAttentionMILAEncoder', 'InnerAttentionYANGEncoder',
                  'InnerAttentionNAACLEncoder', 'ConvNetEncoder', 'LSTMEncoder']
@@ -274,7 +132,7 @@ print(nli_net)
 
 # loss
 weight = torch.FloatTensor(params.n_classes).fill_(1)
-loss_fn = nn.CrossEntropyLoss(weight=weight)
+loss_fn = nn.NLLLoss(weight=weight)
 loss_fn.size_average = False
 
 # optimizer
@@ -287,7 +145,7 @@ if torch.cuda.is_available():
     nli_net.cuda()
     loss_fn.cuda()
 
-""" TRAIN """
+##################### TRAINING ########################
 
 def trainepoch(epoch):
     print('\nTRAINING : Epoch ' + str(epoch))
@@ -300,6 +158,10 @@ def trainepoch(epoch):
     correct = 0.
     # shuffle the data
     permutation = np.random.permutation(len(train['s1']))
+
+    print train.isnull().sum()
+    print valid.isnull().sum()
+    print test.isnull().sum()
 
     s1 = train['s1'][permutation]
     s2 = train['s2'][permutation]
@@ -379,6 +241,8 @@ def trainepoch(epoch):
 def evaluate(epoch,eval_type='valid', final_eval=False):
     nli_net.eval()
     correct = 0.
+    all_costs = []
+
     global val_acc_best, lr, stop_training, adam_stop
 
     if eval_type == 'valid':
@@ -387,6 +251,7 @@ def evaluate(epoch,eval_type='valid', final_eval=False):
     s1 = valid['s1'] if eval_type == 'valid' else test['s1']
     s2 = valid['s2'] if eval_type == 'valid' else test['s2']
     target = valid['label'] if eval_type == 'valid' else test['label']
+
 
     for i in range(0, len(s1), params.batch_size):
         # prepare batch
@@ -405,13 +270,17 @@ def evaluate(epoch,eval_type='valid', final_eval=False):
         pred = output.data.max(1)[1]
         correct += pred.long().eq(tgt_batch.data.long()).cpu().sum()
 
+        # loss
+        loss = loss_fn(output, tgt_batch)
+        all_costs.append(loss.data[0])
+
     # save model
     eval_acc = round(100 * correct / len(s1), 2)
     if final_eval:
         print('finalgrep : accuracy {0} : {1}'.format(eval_type, eval_acc))
     else:
-        print('togrep : results : epoch {0} ; mean accuracy {1} :\
-              {2}'.format(epoch, eval_type, eval_acc))
+        print('togrep : results : epoch {0} ; loss {1} mean accuracy {2} :\
+              {3}'.format(epoch,round(np.mean(all_costs), 2), eval_type, eval_acc))
 
     if eval_type == 'valid' and epoch <= params.n_epochs:
         if eval_acc > val_acc_best:
@@ -446,9 +315,6 @@ adam_stop = False
 stop_training = False
 lr = optim_params['lr'] if 'sgd' in params.optimizer else None
 
-"""
-Train model on Natural Language Inference task
-"""
 # Restore saved model (if one exists).
 ckpt_path = os.path.join(params.outputdir, params.outputmodelname)
 if os.path.exists(ckpt_path):
@@ -460,22 +326,23 @@ if os.path.exists(ckpt_path):
 else:
     epoch = 1
 
+# Training process
+
 while not stop_training and epoch <= params.n_epochs:
     train_acc = trainepoch(epoch)
     eval_acc = evaluate(epoch, 'valid')
     epoch += 1
 
 # Run best model on test set.
-# nli_net.load_state_dict(torch.load(os.path.join(params.outputdir, params.outputmodelname)))
-nli_net.load_state_dict(ckpt['model'])
 
+nli_net.load_state_dict(ckpt['model'])
 
 print('\nTEST : Epoch {0}'.format(epoch))
 evaluate(1e6, 'valid', True)
 evaluate(0, 'test', True)
 
 
-'''Inference'''
+##################### INFERENCE ########################
 
 def inference(infer_data):
     nli_net.eval()
@@ -498,10 +365,10 @@ def inference(infer_data):
         return prob_res_1
 
 
-''' Inference And Write Result'''
+# Inference And Write Result
 result = inference(infer_data)
 result = pd.DataFrame(result).T
-result.to_csv('result1.txt',header=False,index=False)
+result.to_csv('result.txt',header=False,index=False)
 
 # Save encoder instead of full model
-torch.save(nli_net.encoder.state_dict(), os.path.join(params.outputdir, params.outputmodelname + '.encoder.pkl'))
+# torch.save(nli_net.encoder.state_dict(), os.path.join(params.outputdir, params.outputmodelname + '.encoder.pkl'))
