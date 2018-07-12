@@ -18,10 +18,11 @@ from data import get_nli, get_batch
 
 
 parser = argparse.ArgumentParser(description='InferSent training')
+
+parser.add_argument("--task", type=str, default='train')
 # paths
 parser.add_argument("--outputdir", type=str, default='savedir/', help="Output directory")
 parser.add_argument("--outputmodelname", type=str, default='model_5.pickle')
-
 
 # training
 parser.add_argument("--n_epochs", type=int, default=5)
@@ -80,10 +81,6 @@ test_len = valid_len + int (batch_len * 0.15) * params.batch_size
 train = train_data.loc[0:train_len-1]
 valid = train_data.loc[train_len:valid_len-1]
 test = train_data.loc[valid_len:]
-
-print len(train)
-print len(valid)
-print len(test)
 
 
 # adding sos, eos; split and filter words
@@ -147,7 +144,7 @@ print(nli_net)
 
 # loss
 weight = torch.FloatTensor(params.n_classes).fill_(1)
-loss_fn = nn.NLLLoss(weight=weight)
+loss_fn = nn.CrossEntropyLoss(weight=weight)
 loss_fn.size_average = False
 
 # optimizer
@@ -184,6 +181,7 @@ def trainepoch(epoch):
     s1 = train['s1']
     s2 = train['s2']
     target = train['label']
+    sm = nn.Softmax(dim=1)
 
     # print 'null counts:', target.isnull().sum()
     # print 'train label null counts:', train['label'].isnull().sum()
@@ -216,13 +214,20 @@ def trainepoch(epoch):
         # model forward
         output = nli_net((s1_batch, s1_len), (s2_batch, s2_len))
 
-        pred = output.data.max(1)[1]
+
+        # softmax to
+        prob = sm(output)
+
+
+        pred = prob.data.max(1)[1]
         correct += pred.long().eq(tgt_batch.data.long()).cpu().sum()
         assert len(pred) == len(s1[stidx:stidx + params.batch_size])
 
+
+
         # loss
         loss = loss_fn(output, tgt_batch)
-        #
+
         all_costs.append(loss.data[0])
         words_count += (s1_batch.nelement() + s2_batch.nelement()) / params.word_emb_dim
 
@@ -247,7 +252,7 @@ def trainepoch(epoch):
 
         # optimizer step
         optimizer.step()
-        optimizer.param_groups[0]['lr'] = current_lr
+        # optimizer.param_groups[0]['lr'] = current_lr
 
         if len(all_costs) == 100:
             logs.append('{0} ; loss {1} ; sentence/s {2} ; words/s {3} ; accuracy train : {4}'.format(
@@ -268,6 +273,7 @@ def evaluate(epoch,eval_type='valid', final_eval=False):
     nli_net.eval()
     correct = 0.
     all_costs = []
+    sm = nn.Softmax(dim=1)
 
     global val_acc_best, lr, stop_training, adam_stop
 
@@ -293,7 +299,9 @@ def evaluate(epoch,eval_type='valid', final_eval=False):
         # model forward
         output = nli_net((s1_batch, s1_len), (s2_batch, s2_len))
 
-        pred = output.data.max(1)[1]
+        # softmax to
+        prob = sm(output)
+        pred = prob.data.max(1)[1]
         correct += pred.long().eq(tgt_batch.data.long()).cpu().sum()
 
         # loss
@@ -335,42 +343,45 @@ def evaluate(epoch,eval_type='valid', final_eval=False):
                 adam_stop = True
     return eval_acc
 
+if params.task == 'train':
 
-val_acc_best = -1e10
-adam_stop = False
-stop_training = False
-lr = optim_params['lr'] if 'sgd' in params.optimizer else None
+    val_acc_best = -1e10
+    adam_stop = False
+    stop_training = False
+    lr = optim_params['lr'] if 'sgd' in params.optimizer else None
 
-# Restore saved model (if one exists).
-ckpt_path = os.path.join(params.outputdir, params.outputmodelname)
-if os.path.exists(ckpt_path):
-    print('Loading checkpoint: %s' % ckpt_path)
-    ckpt = torch.load(ckpt_path)
-    epoch = ckpt['epoch']
+    # Restore saved model (if one exists).
+    ckpt_path = os.path.join(params.outputdir, params.outputmodelname)
+    if os.path.exists(ckpt_path):
+        print('Loading checkpoint: %s' % ckpt_path)
+        ckpt = torch.load(ckpt_path)
+        epoch = ckpt['epoch']
+        nli_net.load_state_dict(ckpt['model'])
+        optimizer.load_state_dict(ckpt['optimizer'])
+    else:
+        epoch = 1
+
+    # Training process
+
+    while not stop_training and epoch <= params.n_epochs:
+        train_acc = trainepoch(epoch)
+        eval_acc = evaluate(epoch, 'valid')
+        epoch += 1
+
+    # Run best model on test set.
+
     nli_net.load_state_dict(ckpt['model'])
-    optimizer.load_state_dict(ckpt['optimizer'])
-else:
-    epoch = 1
 
-# Training process
-
-while not stop_training and epoch <= params.n_epochs:
-    train_acc = trainepoch(epoch)
-    eval_acc = evaluate(epoch, 'valid')
-    epoch += 1
-
-# Run best model on test set.
-
-nli_net.load_state_dict(ckpt['model'])
-
-print('\nTEST : Epoch {0}'.format(epoch))
-evaluate(1e6, 'valid', True)
-evaluate(0, 'test', True)
+    print('\nTEST : Epoch {0}'.format(epoch))
+    evaluate(1e6, 'valid', True)
+    evaluate(0, 'test', True)
 
 
 ##################### INFERENCE ########################
 
 def inference(infer_data):
+    if torch.cuda.is_available():
+        nli_net.cuda()
     nli_net.eval()
     prob_res_1 = []
     s1 = infer_data['s1']
@@ -380,21 +391,30 @@ def inference(infer_data):
         # prepare batch
         s1_batch, s1_len = get_batch(s1[i:i + params.batch_size].tolist(), word_vec)
         s2_batch, s2_len = get_batch(s2[i:i + params.batch_size].tolist(), word_vec)
-        s1_batch, s2_batch = Variable(s1_batch), Variable(s2_batch)
+        # s1_batch, s2_batch = Variable(s1_batch), Variable(s2_batch)
+
+        if torch.cuda.is_available():
+            s1_batch, s2_batch = Variable(s1_batch.cuda()), Variable(s2_batch.cuda())
+        else:
+            s1_batch, s2_batch = Variable(s1_batch), Variable(s2_batch)
 
         # model forward
         output = nli_net((s1_batch, s1_len), (s2_batch, s2_len))
         # get softmax probability
-        sm = nn.Softmax()
-        res = sm(output.data)[:,1]
-        prob_res_1 += res.data.tolist()
-        return prob_res_1
+        sm = nn.Softmax(dim=1)
+        res = sm(output).data[:,1]
+        # print res
+        prob_res_1 += res.tolist()
+    return prob_res_1
 
-
-# Inference And Write Result
-result = inference(infer_data)
-result = pd.DataFrame(result).T
-result.to_csv('result.txt',header=False,index=False)
+if params.task == 'inference':
+    # Inference And Write Result
+    if torch.cuda.is_available():
+        nli_net.cuda()
+    result = inference(infer_data)
+    result = pd.DataFrame(result)
+    result.to_csv('result.txt',header=False,index=False)
+    print 'inference done!'
 
 # Save encoder instead of full model
 # torch.save(nli_net.encoder.state_dict(), os.path.join(params.outputdir, params.outputmodelname + '.encoder.pkl'))
