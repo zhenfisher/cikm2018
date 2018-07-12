@@ -81,9 +81,10 @@ train = train_data.loc[0:train_len-1]
 valid = train_data.loc[train_len:valid_len-1]
 test = train_data.loc[valid_len:]
 
-print train.isnull().sum()
-print valid.isnull().sum()
-print test.isnull().sum()
+print len(train)
+print len(valid)
+print len(test)
+
 
 # adding sos, eos; split and filter words
 
@@ -171,17 +172,28 @@ def trainepoch(epoch):
     last_time = time.time()
     correct = 0.
     # shuffle the data
-    permutation = np.random.permutation(len(train['s1']))
 
-    print train.isnull().sum()
-    print valid.isnull().sum()
-    print test.isnull().sum()
+    # permutation = np.random.permutation(len(train['s1']))
+    #
+    # target = train['label'][permutation]
+    # s1 = train['s1'][permutation]
+    # s2 = train['s2'][permutation]
 
-    s1 = train['s1'][permutation]
-    s2 = train['s2'][permutation]
-    target = train['label'][permutation]
+    from sklearn.utils import shuffle
+    train = shuffle(train_data)
+    s1 = train['s1']
+    s2 = train['s2']
+    target = train['label']
 
+    # print 'null counts:', target.isnull().sum()
+    # print 'train label null counts:', train['label'].isnull().sum()
+    # print 's1 null counts:', train['s1'].isnull().sum()
+    # print 's2 null counts:', train['s2'].isnull().sum()
+    # for t in target.tolist():
+    #     print int(t)
+    target.map(lambda x: int(x) )
 
+    #!!!!!!!!!!!!!!!!!
     optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr'] * params.decay if epoch>1\
         and 'sgd' in params.optimizer else optimizer.param_groups[0]['lr']
     print('Learning rate : {0}'.format(optimizer.param_groups[0]['lr']))
