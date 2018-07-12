@@ -4,3 +4,10 @@ import里面有些库，可能要自己装一下
 
 Added: InferSent Model From Facebook
 cikm2018 jupyter notebook help understanding
+
+1.Run Gen.py to generate cleaned data and embeddings
+2.Add --task 'inference' to inference on existing model
+
+logloss can be around 0.8, but the results are all around 0.5 .......
+
+
